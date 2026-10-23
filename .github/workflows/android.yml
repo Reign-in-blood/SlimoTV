@@ -4,6 +4,10 @@ on:
     branches: [master]
   workflow_dispatch:
 
+# Permission nécessaire pour créer le tag et joindre l'APK à une GitHub Release.
+permissions:
+  contents: write
+
 jobs:
   apk:
     runs-on: ubuntu-latest
@@ -36,3 +40,29 @@ jobs:
           name: SlimoTV-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+      - name: Publish versioned GitHub prerelease
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="v$(node -p "require('./package.json').version")"
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            echo "Release $VERSION already exists; it will not be overwritten."
+            exit 0
+          fi
+          APK="SlimoTV-${VERSION}.apk"
+          cp android/app/build/outputs/apk/debug/app-debug.apk "$APK"
+          printf '%s\n' \
+            'Version de test pour LG 42CS460-ZA (2012).' \
+            '' \
+            '- Marche / Arrêt, Volume + et Volume -.' \
+            '- Codes NEC1 LG de départ, émission infrarouge à 38 kHz.' \
+            '- Réglages avancés pour modifier chaque code IR et les conserver localement.' \
+            '' \
+            'Les codes et le fonctionnement réel n’ont pas encore été validés sur le téléviseur.' \
+            > release-notes.md
+          gh release create "$VERSION" "$APK" \
+            --target "$GITHUB_SHA" \
+            --title "SlimoTV $VERSION - Version de test" \
+            --notes-file release-notes.md \
+            --prerelease
